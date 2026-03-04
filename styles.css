@@ -1,4 +1,4 @@
-/* ─── CriticMarkup visual rendering ─────────────────────────────────────────── */
+/* ─── CriticMarkup visual rendering (Live Preview) ─────────────────────────── */
 
 .critic-track-addition {
   background-color: rgba(0, 180, 0, 0.15);
@@ -32,14 +32,86 @@
   border-radius: 2px;
 }
 
-/* ─── Status bar indicator ──────────────────────────────────────────────────── */
+/* ─── Source mode styles (shows delimiters with color) ─────────────────────── */
+
+.critic-track-addition-source {
+  color: rgba(0, 160, 0, 0.85);
+}
+
+.critic-track-deletion-source {
+  color: rgba(200, 0, 0, 0.75);
+  text-decoration: line-through;
+  text-decoration-color: rgba(200, 0, 0, 0.4);
+}
+
+.critic-track-substitution-source {
+  color: rgba(180, 120, 0, 0.85);
+}
+
+.critic-track-comment-source {
+  color: rgba(100, 100, 255, 0.7);
+  font-size: 0.9em;
+}
+
+.critic-track-highlight-source {
+  background-color: rgba(255, 200, 0, 0.18);
+}
+
+/* ─── Accept / Reject inline buttons ───────────────────────────────────────── */
+
+.critic-track-actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
+.critic-track-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.6;
+  transition: opacity 0.15s, background-color 0.15s;
+  vertical-align: middle;
+}
+
+.critic-track-btn:hover {
+  opacity: 1;
+}
+
+.critic-track-accept-btn {
+  color: #22863a;
+  background-color: rgba(0, 180, 0, 0.1);
+}
+
+.critic-track-accept-btn:hover {
+  background-color: rgba(0, 180, 0, 0.25);
+}
+
+.critic-track-reject-btn {
+  color: #cb2431;
+  background-color: rgba(220, 0, 0, 0.08);
+}
+
+.critic-track-reject-btn:hover {
+  background-color: rgba(220, 0, 0, 0.2);
+}
+
+/* ─── Status bar indicator ─────────────────────────────────────────────────── */
 
 .critic-track-active {
   color: var(--text-accent);
   font-weight: 600;
 }
 
-/* ─── Dark theme adjustments ────────────────────────────────────────────────── */
+/* ─── Dark theme adjustments ───────────────────────────────────────────────── */
 
 .theme-dark .critic-track-addition {
   background-color: rgba(0, 200, 0, 0.1);
@@ -58,4 +130,29 @@
 
 .theme-dark .critic-track-highlight {
   background-color: rgba(255, 200, 0, 0.15);
+}
+
+.theme-dark .critic-track-addition-source {
+  color: rgba(80, 220, 80, 0.9);
+}
+
+.theme-dark .critic-track-deletion-source {
+  color: rgba(255, 80, 80, 0.8);
+  text-decoration-color: rgba(255, 80, 80, 0.4);
+}
+
+.theme-dark .critic-track-substitution-source {
+  color: rgba(255, 180, 50, 0.85);
+}
+
+.theme-dark .critic-track-comment-source {
+  color: rgba(140, 140, 255, 0.8);
+}
+
+.theme-dark .critic-track-accept-btn {
+  color: #56d364;
+}
+
+.theme-dark .critic-track-reject-btn {
+  color: #f85149;
 }
