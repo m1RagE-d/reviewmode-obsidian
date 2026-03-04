@@ -1,0 +1,61 @@
+/* ─── CriticMarkup visual rendering ─────────────────────────────────────────── */
+
+.critic-track-addition {
+  background-color: rgba(0, 180, 0, 0.15);
+  color: var(--text-normal);
+  border-bottom: 2px solid rgba(0, 180, 0, 0.5);
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+.critic-track-deletion {
+  background-color: rgba(220, 0, 0, 0.12);
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(220, 0, 0, 0.6);
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+.critic-track-comment {
+  background-color: rgba(100, 100, 255, 0.12);
+  color: var(--text-muted);
+  font-size: 0.85em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(100, 100, 255, 0.25);
+}
+
+.critic-track-highlight {
+  background-color: rgba(255, 200, 0, 0.25);
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+/* ─── Status bar indicator ──────────────────────────────────────────────────── */
+
+.critic-track-active {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+/* ─── Dark theme adjustments ────────────────────────────────────────────────── */
+
+.theme-dark .critic-track-addition {
+  background-color: rgba(0, 200, 0, 0.1);
+  border-bottom-color: rgba(0, 200, 0, 0.4);
+}
+
+.theme-dark .critic-track-deletion {
+  background-color: rgba(255, 50, 50, 0.1);
+  text-decoration-color: rgba(255, 50, 50, 0.5);
+}
+
+.theme-dark .critic-track-comment {
+  background-color: rgba(120, 120, 255, 0.1);
+  border-color: rgba(120, 120, 255, 0.2);
+}
+
+.theme-dark .critic-track-highlight {
+  background-color: rgba(255, 200, 0, 0.15);
+}
