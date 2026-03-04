@@ -1,4 +1,5 @@
 # Critic Track
+# 还在开发中现在完全不能用
 
 Obsidian 插件：基于 CriticMarkup 语法的轻量级修订追踪。
 
