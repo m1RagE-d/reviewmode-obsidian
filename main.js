@@ -107,6 +107,15 @@ function findAllCriticMarkup(text) {
   }
   return filtered;
 }
+function isPartOfCriticMarkup(doc, charOffset) {
+  const matches = findAllCriticMarkup(doc);
+  for (const m of matches) {
+    if (charOffset >= m.from && charOffset < m.to) {
+      return true;
+    }
+  }
+  return false;
+}
 var AcceptRejectWidget = class extends import_view.WidgetType {
   constructor(matchFrom, matchTo, acceptText, rejectText) {
     super();
@@ -181,12 +190,7 @@ function buildDecorations(view) {
             from: match.to,
             to: match.to,
             deco: import_view.Decoration.widget({
-              widget: new AcceptRejectWidget(
-                match.from,
-                match.to,
-                match.content || "",
-                ""
-              ),
+              widget: new AcceptRejectWidget(match.from, match.to, match.content || "", ""),
               side: 1
             })
           });
@@ -214,12 +218,7 @@ function buildDecorations(view) {
             from: match.to,
             to: match.to,
             deco: import_view.Decoration.widget({
-              widget: new AcceptRejectWidget(
-                match.from,
-                match.to,
-                "",
-                match.content || ""
-              ),
+              widget: new AcceptRejectWidget(match.from, match.to, "", match.content || ""),
               side: 1
             })
           });
@@ -357,19 +356,19 @@ function criticMarkupPostProcessor(el, ctx) {
       criticRegex,
       (_match, add, del, subOld, subNew, comment, highlight) => {
         if (add !== void 0) {
-          return `<span class="critic-track-addition">${escapeHtml(add)}</span>`;
+          return '<span class="critic-track-addition">' + escapeHtml(add) + "</span>";
         }
         if (del !== void 0) {
-          return `<span class="critic-track-deletion">${escapeHtml(del)}</span>`;
+          return '<span class="critic-track-deletion">' + escapeHtml(del) + "</span>";
         }
         if (subOld !== void 0 && subNew !== void 0) {
-          return `<span class="critic-track-deletion">${escapeHtml(subOld)}</span><span class="critic-track-addition">${escapeHtml(subNew)}</span>`;
+          return '<span class="critic-track-deletion">' + escapeHtml(subOld) + '</span><span class="critic-track-addition">' + escapeHtml(subNew) + "</span>";
         }
         if (comment !== void 0) {
-          return `<span class="critic-track-comment">${escapeHtml(comment)}</span>`;
+          return '<span class="critic-track-comment">' + escapeHtml(comment) + "</span>";
         }
         if (highlight !== void 0) {
-          return `<span class="critic-track-highlight">${escapeHtml(highlight)}</span>`;
+          return '<span class="critic-track-highlight">' + escapeHtml(highlight) + "</span>";
         }
         return _match;
       }
@@ -387,6 +386,141 @@ function criticMarkupPostProcessor(el, ctx) {
 function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+var VIEW_TYPE_CHANGES = "critic-track-changes";
+var ChangesView = class extends import_obsidian.ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.refreshTimer = null;
+    this.plugin = plugin;
+  }
+  getViewType() {
+    return VIEW_TYPE_CHANGES;
+  }
+  getDisplayText() {
+    return "Tracked Changes";
+  }
+  getIcon() {
+    return "pencil";
+  }
+  async onOpen() {
+    this.renderChanges();
+    this.registerEvent(
+      this.app.workspace.on("editor-change", () => this.scheduleRefresh())
+    );
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => this.renderChanges())
+    );
+  }
+  async onClose() {
+    if (this.refreshTimer)
+      clearTimeout(this.refreshTimer);
+  }
+  scheduleRefresh() {
+    if (this.refreshTimer)
+      clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.renderChanges(), 300);
+  }
+  renderChanges() {
+    const container = this.contentEl;
+    container.empty();
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    if (!view) {
+      container.createEl("div", {
+        text: "No active document",
+        cls: "critic-track-panel-empty"
+      });
+      return;
+    }
+    const doc = view.editor.getValue();
+    const changes = findAllCriticMarkup(doc);
+    const actionable = changes.filter(
+      (c) => c.type === "addition" || c.type === "deletion" || c.type === "substitution"
+    );
+    if (actionable.length === 0) {
+      container.createEl("div", {
+        text: "No tracked changes",
+        cls: "critic-track-panel-empty"
+      });
+      return;
+    }
+    const header = container.createEl("div", { cls: "critic-track-panel-header" });
+    header.createEl("span", {
+      text: actionable.length + " change" + (actionable.length > 1 ? "s" : ""),
+      cls: "critic-track-panel-count"
+    });
+    const headerBtns = header.createEl("div", { cls: "critic-track-panel-header-btns" });
+    const acceptAllBtn = headerBtns.createEl("button", {
+      cls: "critic-track-panel-btn critic-track-panel-btn-accept"
+    });
+    acceptAllBtn.textContent = "Accept All";
+    acceptAllBtn.addEventListener("click", () => {
+      this.plugin.acceptAllChanges();
+      this.renderChanges();
+    });
+    const rejectAllBtn = headerBtns.createEl("button", {
+      cls: "critic-track-panel-btn critic-track-panel-btn-reject"
+    });
+    rejectAllBtn.textContent = "Reject All";
+    rejectAllBtn.addEventListener("click", () => {
+      this.plugin.rejectAllChanges();
+      this.renderChanges();
+    });
+    const list = container.createEl("div", { cls: "critic-track-panel-list" });
+    for (let i = 0; i < actionable.length; i++) {
+      const change = actionable[i];
+      const item = list.createEl("div", { cls: "critic-track-panel-item" });
+      const typeBadge = item.createEl("span", {
+        cls: "critic-track-panel-badge critic-track-panel-badge-" + change.type
+      });
+      typeBadge.textContent = change.type === "addition" ? "+" : change.type === "deletion" ? "\u2212" : "\u223C";
+      const content = item.createEl("div", { cls: "critic-track-panel-content" });
+      if (change.type === "substitution") {
+        const oldEl = content.createEl("span", { cls: "critic-track-panel-del-text" });
+        oldEl.textContent = truncate(change.oldContent || "", 50);
+        content.createEl("span", { text: " \u2192 ", cls: "critic-track-panel-arrow" });
+        const newEl = content.createEl("span", { cls: "critic-track-panel-add-text" });
+        newEl.textContent = truncate(change.newContent || "", 50);
+      } else {
+        const textEl = content.createEl("span", {
+          cls: change.type === "addition" ? "critic-track-panel-add-text" : "critic-track-panel-del-text"
+        });
+        textEl.textContent = truncate(change.content || "", 80);
+      }
+      const actions = item.createEl("div", { cls: "critic-track-panel-item-actions" });
+      const acceptBtn = actions.createEl("button", {
+        cls: "critic-track-panel-btn-sm critic-track-panel-btn-accept",
+        title: "Accept"
+      });
+      acceptBtn.textContent = "\u2713";
+      acceptBtn.addEventListener("click", () => {
+        this.plugin.applyChangeByIndex(i, "accept");
+        this.renderChanges();
+      });
+      const rejectBtn = actions.createEl("button", {
+        cls: "critic-track-panel-btn-sm critic-track-panel-btn-reject",
+        title: "Reject"
+      });
+      rejectBtn.textContent = "\u2717";
+      rejectBtn.addEventListener("click", () => {
+        this.plugin.applyChangeByIndex(i, "reject");
+        this.renderChanges();
+      });
+      item.addEventListener("click", (e) => {
+        if (e.target.tagName === "BUTTON")
+          return;
+        const editor = view.editor;
+        const pos = this.plugin.offsetToPos(editor, change.from);
+        editor.setCursor(pos);
+        editor.focus();
+      });
+    }
+  }
+};
+function truncate(str, max) {
+  if (str.length <= max)
+    return str;
+  return str.slice(0, max) + "\u2026";
+}
 var CriticTrackPlugin = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
@@ -401,6 +535,7 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
     await this.loadSettings();
     this.statusBarEl = this.addStatusBarItem();
     this.updateStatusBar();
+    this.registerView(VIEW_TYPE_CHANGES, (leaf) => new ChangesView(leaf, this));
     this.addCommand({
       id: "toggle-tracking",
       name: "Toggle revision tracking",
@@ -432,6 +567,11 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       name: "Add comment at selection",
       callback: () => this.addComment()
     });
+    this.addCommand({
+      id: "show-changes-panel",
+      name: "Show tracked changes panel",
+      callback: () => this.activateChangesPanel()
+    });
     this.addRibbonIcon(
       "pencil",
       "Toggle revision tracking",
@@ -441,25 +581,20 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
     this.registerEditorExtension(criticMarkupViewPlugin);
     this.registerMarkdownPostProcessor(criticMarkupPostProcessor);
     this.registerEvent(
-      this.app.workspace.on(
-        "editor-menu",
-        (menu, editor) => {
-          if (this.tracking) {
-            menu.addItem(
-              (item) => item.setTitle("Accept change at cursor").setIcon("check").onClick(() => this.acceptChangeAtCursor())
-            );
-            menu.addItem(
-              (item) => item.setTitle("Reject change at cursor").setIcon("x").onClick(() => this.rejectChangeAtCursor())
-            );
-            menu.addSeparator();
-          }
+      this.app.workspace.on("editor-menu", (menu, editor) => {
+        if (this.tracking) {
           menu.addItem(
-            (item) => item.setTitle(
-              this.tracking ? "Stop tracking" : "Start tracking"
-            ).setIcon("pencil").onClick(() => this.toggleTracking())
+            (item) => item.setTitle("Accept change at cursor").setIcon("check").onClick(() => this.acceptChangeAtCursor())
           );
+          menu.addItem(
+            (item) => item.setTitle("Reject change at cursor").setIcon("x").onClick(() => this.rejectChangeAtCursor())
+          );
+          menu.addSeparator();
         }
-      )
+        menu.addItem(
+          (item) => item.setTitle(this.tracking ? "Stop tracking" : "Start tracking").setIcon("pencil").onClick(() => this.toggleTracking())
+        );
+      })
     );
     this.registerDomEvent(
       document,
@@ -501,13 +636,23 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
   onunload() {
     this.finalizeSession();
   }
+  async activateChangesPanel() {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHANGES);
+    if (existing.length) {
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+    const rightLeaf = this.app.workspace.getRightLeaf(false);
+    if (rightLeaf) {
+      await rightLeaf.setViewState({ type: VIEW_TYPE_CHANGES, active: true });
+      this.app.workspace.revealLeaf(rightLeaf);
+    }
+  }
   toggleTracking() {
     this.finalizeSession();
     this.tracking = !this.tracking;
     this.updateStatusBar();
-    new import_obsidian.Notice(
-      this.tracking ? "Revision tracking ON" : "Revision tracking OFF"
-    );
+    new import_obsidian.Notice(this.tracking ? "Revision tracking ON" : "Revision tracking OFF");
   }
   updateStatusBar() {
     if (this.statusBarEl) {
@@ -535,6 +680,7 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
     const closing = "++}" + this.session.meta;
     this.intercepting = true;
     editor.replaceRange(closing, closePos);
+    editor.setCursor({ line: closeLine, ch: closeCh + closing.length });
     this.intercepting = false;
     this.session = null;
   }
@@ -546,6 +692,10 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
         const expectedCh = this.session.startCh + 3 + this.session.content.length;
         if (cursor2.line === this.session.startLine && cursor2.ch === expectedCh) {
           editor.replaceRange(char, cursor2);
+          editor.setCursor({
+            line: cursor2.line,
+            ch: cursor2.ch + char.length
+          });
           this.session.content += char;
           return;
         }
@@ -555,6 +705,10 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       }
       const cursor = editor.getCursor();
       editor.replaceRange("{++" + char, cursor);
+      editor.setCursor({
+        line: cursor.line,
+        ch: cursor.ch + 3 + char.length
+      });
       this.session = {
         startLine: cursor.line,
         startCh: cursor.ch,
@@ -679,33 +833,33 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       const meta = makeMetaComment(this.settings);
       if (sel && sel.length > 0) {
         editor.replaceSelection("{--" + sel + "--}" + meta);
-      } else {
-        const cursor = editor.getCursor();
-        if (cursor.ch === 0 && cursor.line === 0)
-          return;
-        const lineText = editor.getLine(cursor.line);
-        const doc = editor.getValue();
-        const offset = this.cursorToOffset(editor, cursor);
-        if (this.isInsideCriticMarkup(doc, offset)) {
-          return;
-        }
-        let fromPos;
-        if (cursor.ch > 0) {
-          fromPos = { line: cursor.line, ch: cursor.ch - 1 };
-        } else {
-          const prevLine = cursor.line - 1;
-          fromPos = {
-            line: prevLine,
-            ch: editor.getLine(prevLine).length
-          };
-        }
-        const deleted = editor.getRange(fromPos, cursor);
-        editor.replaceRange(
-          "{--" + deleted + "--}" + meta,
-          fromPos,
-          cursor
-        );
+        return;
       }
+      const cursor = editor.getCursor();
+      if (cursor.ch === 0 && cursor.line === 0)
+        return;
+      const doc = editor.getValue();
+      const offset = this.cursorToOffset(editor, cursor);
+      if (offset > 0 && isPartOfCriticMarkup(doc, offset - 1)) {
+        return;
+      }
+      let fromPos;
+      if (cursor.ch > 0) {
+        fromPos = { line: cursor.line, ch: cursor.ch - 1 };
+      } else {
+        const prevLine = cursor.line - 1;
+        fromPos = {
+          line: prevLine,
+          ch: editor.getLine(prevLine).length
+        };
+      }
+      const deleted = editor.getRange(fromPos, cursor);
+      const replacement = "{--" + deleted + "--}" + meta;
+      editor.replaceRange(replacement, fromPos, cursor);
+      editor.setCursor({
+        line: fromPos.line,
+        ch: fromPos.ch + replacement.length
+      });
     } finally {
       this.intercepting = false;
     }
@@ -717,29 +871,30 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       const meta = makeMetaComment(this.settings);
       if (sel && sel.length > 0) {
         editor.replaceSelection("{--" + sel + "--}" + meta);
-      } else {
-        const cursor = editor.getCursor();
-        const lineText = editor.getLine(cursor.line);
-        if (cursor.ch >= lineText.length && cursor.line >= editor.lastLine())
-          return;
-        const doc = editor.getValue();
-        const offset = this.cursorToOffset(editor, cursor);
-        if (this.isInsideCriticMarkup(doc, offset)) {
-          return;
-        }
-        let toPos;
-        if (cursor.ch < lineText.length) {
-          toPos = { line: cursor.line, ch: cursor.ch + 1 };
-        } else {
-          toPos = { line: cursor.line + 1, ch: 0 };
-        }
-        const deleted = editor.getRange(cursor, toPos);
-        editor.replaceRange(
-          "{--" + deleted + "--}" + meta,
-          cursor,
-          toPos
-        );
+        return;
       }
+      const cursor = editor.getCursor();
+      const lineText = editor.getLine(cursor.line);
+      if (cursor.ch >= lineText.length && cursor.line >= editor.lastLine())
+        return;
+      const doc = editor.getValue();
+      const offset = this.cursorToOffset(editor, cursor);
+      if (isPartOfCriticMarkup(doc, offset)) {
+        return;
+      }
+      let toPos;
+      if (cursor.ch < lineText.length) {
+        toPos = { line: cursor.line, ch: cursor.ch + 1 };
+      } else {
+        toPos = { line: cursor.line + 1, ch: 0 };
+      }
+      const deleted = editor.getRange(cursor, toPos);
+      const replacement = "{--" + deleted + "--}" + meta;
+      editor.replaceRange(replacement, cursor, toPos);
+      editor.setCursor({
+        line: cursor.line,
+        ch: cursor.ch + replacement.length
+      });
     } finally {
       this.intercepting = false;
     }
@@ -754,26 +909,6 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
     } finally {
       this.intercepting = false;
     }
-  }
-  // ── Helper: check if offset is inside CriticMarkup ──────────────────────
-  isInsideCriticMarkup(doc, offset) {
-    const patterns = [
-      /\{\+\+[\s\S]+?\+\+\}/g,
-      /\{--[\s\S]+?--\}/g,
-      /\{~~[\s\S]+?~>[\s\S]+?~~\}/g,
-      /\{>>[\s\S]+?<<\}/g,
-      /\{==[\s\S]+?==\}/g
-    ];
-    for (const re of patterns) {
-      for (const m of doc.matchAll(re)) {
-        const start = m.index;
-        const end = start + m[0].length;
-        if (offset > start && offset < end) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
   // ── Accept / Reject ──────────────────────────────────────────────────────
   acceptAllChanges() {
@@ -802,6 +937,43 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
     view.editor.setValue(t);
     new import_obsidian.Notice("All changes rejected");
   }
+  /**
+   * Accept or reject a specific change by its index among actionable changes.
+   * Used by the sidebar panel.
+   */
+  applyChangeByIndex(index, action) {
+    this.finalizeSession();
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
+    if (!view)
+      return;
+    const doc = view.editor.getValue();
+    const changes = findAllCriticMarkup(doc);
+    const actionable = changes.filter(
+      (c) => c.type === "addition" || c.type === "deletion" || c.type === "substitution"
+    );
+    if (index < 0 || index >= actionable.length)
+      return;
+    const change = actionable[index];
+    let replacement = "";
+    if (action === "accept") {
+      if (change.type === "addition")
+        replacement = change.content || "";
+      else if (change.type === "deletion")
+        replacement = "";
+      else if (change.type === "substitution")
+        replacement = change.newContent || "";
+    } else {
+      if (change.type === "addition")
+        replacement = "";
+      else if (change.type === "deletion")
+        replacement = change.content || "";
+      else if (change.type === "substitution")
+        replacement = change.oldContent || "";
+    }
+    view.editor.setValue(
+      doc.slice(0, change.from) + replacement + doc.slice(change.to)
+    );
+  }
   findMarkupAtOffset(doc, offset) {
     const patterns = [
       { re: /\{\+\+([\s\S]+?)\+\+\}(\{>>[\s\S]+?<<\})?/g, type: "add" },
@@ -828,6 +1000,18 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       offset += editor.getLine(i).length + 1;
     offset += pos.ch;
     return offset;
+  }
+  offsetToPos(editor, offset) {
+    let remaining = offset;
+    const lineCount = editor.lineCount();
+    for (let i = 0; i < lineCount; i++) {
+      const lineLen = editor.getLine(i).length;
+      if (remaining <= lineLen) {
+        return { line: i, ch: remaining };
+      }
+      remaining -= lineLen + 1;
+    }
+    return { line: lineCount - 1, ch: editor.getLine(lineCount - 1).length };
   }
   acceptChangeAtCursor() {
     this.finalizeSession();
@@ -887,16 +1071,10 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       return;
     }
     const ts = this.settings.enableTimestamp ? " " + formatTimestamp(this.settings.timestampFormat) : "";
-    editor.replaceSelection(
-      "{==" + sel + "==}{>>comment" + ts + "<<}"
-    );
+    editor.replaceSelection("{==" + sel + "==}{>>comment" + ts + "<<}");
   }
   async loadSettings() {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      await this.loadData()
-    );
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
   async saveSettings() {
     await this.saveData(this.settings);

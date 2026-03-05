@@ -10,6 +10,8 @@ import {
   EditorPosition,
   MarkdownPostProcessorContext,
   editorLivePreviewField,
+  ItemView,
+  WorkspaceLeaf,
 } from "obsidian";
 
 import {
@@ -21,7 +23,7 @@ import {
   ViewUpdate,
 } from "@codemirror/view";
 
-import { RangeSetBuilder, EditorState } from "@codemirror/state";
+import { RangeSetBuilder } from "@codemirror/state";
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +72,6 @@ interface CriticMatch {
   from: number;
   to: number;
   fullMatch: string;
-  // Content groups
   content?: string;
   oldContent?: string;
   newContent?: string;
@@ -79,7 +80,6 @@ interface CriticMatch {
 function findAllCriticMarkup(text: string): CriticMatch[] {
   const matches: CriticMatch[] = [];
 
-  // Addition: {++text++}
   for (const m of text.matchAll(/\{\+\+([\s\S]+?)\+\+\}/g)) {
     matches.push({
       type: "addition",
@@ -90,7 +90,6 @@ function findAllCriticMarkup(text: string): CriticMatch[] {
     });
   }
 
-  // Deletion: {--text--}
   for (const m of text.matchAll(/\{--([\s\S]+?)--\}/g)) {
     matches.push({
       type: "deletion",
@@ -101,7 +100,6 @@ function findAllCriticMarkup(text: string): CriticMatch[] {
     });
   }
 
-  // Substitution: {~~old~>new~~}
   for (const m of text.matchAll(/\{~~([\s\S]+?)~>([\s\S]+?)~~\}/g)) {
     matches.push({
       type: "substitution",
@@ -113,7 +111,6 @@ function findAllCriticMarkup(text: string): CriticMatch[] {
     });
   }
 
-  // Comment: {>>text<<}
   for (const m of text.matchAll(/\{>>([\s\S]+?)<<\}/g)) {
     matches.push({
       type: "comment",
@@ -124,7 +121,6 @@ function findAllCriticMarkup(text: string): CriticMatch[] {
     });
   }
 
-  // Highlight: {==text==}
   for (const m of text.matchAll(/\{==([\s\S]+?)==\}/g)) {
     matches.push({
       type: "highlight",
@@ -135,10 +131,8 @@ function findAllCriticMarkup(text: string): CriticMatch[] {
     });
   }
 
-  // Sort by position
   matches.sort((a, b) => a.from - b.from);
 
-  // Filter out overlapping matches (later matches that overlap with earlier ones)
   const filtered: CriticMatch[] = [];
   let lastEnd = -1;
   for (const m of matches) {
@@ -149,6 +143,22 @@ function findAllCriticMarkup(text: string): CriticMatch[] {
   }
 
   return filtered;
+}
+
+// ── Markup boundary helper ────────────────────────────────────────────────────
+
+/**
+ * Check if a character position is inside or part of CriticMarkup syntax.
+ * Uses inclusive boundaries: returns true for positions from `{` through `}`.
+ */
+function isPartOfCriticMarkup(doc: string, charOffset: number): boolean {
+  const matches = findAllCriticMarkup(doc);
+  for (const m of matches) {
+    if (charOffset >= m.from && charOffset < m.to) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ── CodeMirror 6 Widgets ──────────────────────────────────────────────────────
@@ -169,7 +179,7 @@ class AcceptRejectWidget extends WidgetType {
 
     const acceptBtn = document.createElement("span");
     acceptBtn.className = "critic-track-btn critic-track-accept-btn";
-    acceptBtn.textContent = "✓";
+    acceptBtn.textContent = "\u2713";
     acceptBtn.title = "Accept";
     acceptBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -185,7 +195,7 @@ class AcceptRejectWidget extends WidgetType {
 
     const rejectBtn = document.createElement("span");
     rejectBtn.className = "critic-track-btn critic-track-reject-btn";
-    rejectBtn.textContent = "✗";
+    rejectBtn.textContent = "\u2717";
     rejectBtn.title = "Reject";
     rejectBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -230,11 +240,9 @@ function buildDecorations(view: EditorView): DecorationSet {
   for (const match of matches) {
     switch (match.type) {
       case "addition": {
-        // {++ = 3 chars, ++} = 3 chars
         const openEnd = match.from + 3;
         const closeStart = match.to - 3;
         if (isLivePreview) {
-          // Hide delimiters in live preview
           decos.push({ from: match.from, to: openEnd, deco: Decoration.replace({}) });
           decos.push({
             from: openEnd,
@@ -242,22 +250,15 @@ function buildDecorations(view: EditorView): DecorationSet {
             deco: Decoration.mark({ class: "critic-track-addition" }),
           });
           decos.push({ from: closeStart, to: match.to, deco: Decoration.replace({}) });
-          // Add accept/reject widget
           decos.push({
             from: match.to,
             to: match.to,
             deco: Decoration.widget({
-              widget: new AcceptRejectWidget(
-                match.from,
-                match.to,
-                match.content || "",
-                ""
-              ),
+              widget: new AcceptRejectWidget(match.from, match.to, match.content || "", ""),
               side: 1,
             }),
           });
         } else {
-          // Source mode: style entire block
           decos.push({
             from: match.from,
             to: match.to,
@@ -282,12 +283,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             from: match.to,
             to: match.to,
             deco: Decoration.widget({
-              widget: new AcceptRejectWidget(
-                match.from,
-                match.to,
-                "",
-                match.content || ""
-              ),
+              widget: new AcceptRejectWidget(match.from, match.to, "", match.content || ""),
               side: 1,
             }),
           });
@@ -302,30 +298,24 @@ function buildDecorations(view: EditorView): DecorationSet {
       }
 
       case "substitution": {
-        // {~~ = 3 chars, ~~} = 3 chars, ~> = 2 chars
         const openEnd = match.from + 3;
         const arrowIdx = match.fullMatch.indexOf("~>");
         const arrowFrom = match.from + arrowIdx;
         const arrowTo = arrowFrom + 2;
         const closeStart = match.to - 3;
         if (isLivePreview) {
-          // Hide {~~
           decos.push({ from: match.from, to: openEnd, deco: Decoration.replace({}) });
-          // Old content with deletion style
           decos.push({
             from: openEnd,
             to: arrowFrom,
             deco: Decoration.mark({ class: "critic-track-deletion" }),
           });
-          // Hide ~>
           decos.push({ from: arrowFrom, to: arrowTo, deco: Decoration.replace({}) });
-          // New content with addition style
           decos.push({
             from: arrowTo,
             to: closeStart,
             deco: Decoration.mark({ class: "critic-track-addition" }),
           });
-          // Hide ~~}
           decos.push({ from: closeStart, to: match.to, deco: Decoration.replace({}) });
           decos.push({
             from: match.to,
@@ -394,7 +384,6 @@ function buildDecorations(view: EditorView): DecorationSet {
     }
   }
 
-  // Sort decorations by from position (required by RangeSetBuilder)
   decos.sort((a, b) => a.from - b.from || a.to - b.to);
 
   const builder = new RangeSetBuilder<Decoration>();
@@ -415,11 +404,7 @@ const criticMarkupViewPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (
-        update.docChanged ||
-        update.viewportChanged ||
-        update.selectionSet
-      ) {
+      if (update.docChanged || update.viewportChanged || update.selectionSet) {
         this.decorations = buildDecorations(update.view);
       }
     }
@@ -435,7 +420,6 @@ function criticMarkupPostProcessor(
   el: HTMLElement,
   ctx: MarkdownPostProcessorContext
 ) {
-  // Process text nodes to find and render CriticMarkup
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   const nodesToReplace: { node: Text; html: string }[] = [];
 
@@ -463,19 +447,25 @@ function criticMarkupPostProcessor(
         highlight: string | undefined
       ) => {
         if (add !== undefined) {
-          return `<span class="critic-track-addition">${escapeHtml(add)}</span>`;
+          return '<span class="critic-track-addition">' + escapeHtml(add) + "</span>";
         }
         if (del !== undefined) {
-          return `<span class="critic-track-deletion">${escapeHtml(del)}</span>`;
+          return '<span class="critic-track-deletion">' + escapeHtml(del) + "</span>";
         }
         if (subOld !== undefined && subNew !== undefined) {
-          return `<span class="critic-track-deletion">${escapeHtml(subOld)}</span><span class="critic-track-addition">${escapeHtml(subNew)}</span>`;
+          return (
+            '<span class="critic-track-deletion">' +
+            escapeHtml(subOld) +
+            '</span><span class="critic-track-addition">' +
+            escapeHtml(subNew) +
+            "</span>"
+          );
         }
         if (comment !== undefined) {
-          return `<span class="critic-track-comment">${escapeHtml(comment)}</span>`;
+          return '<span class="critic-track-comment">' + escapeHtml(comment) + "</span>";
         }
         if (highlight !== undefined) {
-          return `<span class="critic-track-highlight">${escapeHtml(highlight)}</span>`;
+          return '<span class="critic-track-highlight">' + escapeHtml(highlight) + "</span>";
         }
         return _match;
       }
@@ -486,7 +476,6 @@ function criticMarkupPostProcessor(
     }
   }
 
-  // Replace text nodes with styled HTML
   for (const { node, html } of nodesToReplace) {
     const wrapper = document.createElement("span");
     wrapper.innerHTML = html;
@@ -500,6 +489,176 @@ function escapeHtml(str: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+// ── Sidebar Panel (Tracked Changes) ──────────────────────────────────────────
+
+const VIEW_TYPE_CHANGES = "critic-track-changes";
+
+class ChangesView extends ItemView {
+  plugin: CriticTrackPlugin;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(leaf: WorkspaceLeaf, plugin: CriticTrackPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType() {
+    return VIEW_TYPE_CHANGES;
+  }
+
+  getDisplayText() {
+    return "Tracked Changes";
+  }
+
+  getIcon() {
+    return "pencil";
+  }
+
+  async onOpen() {
+    this.renderChanges();
+    this.registerEvent(
+      this.app.workspace.on("editor-change", () => this.scheduleRefresh())
+    );
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => this.renderChanges())
+    );
+  }
+
+  async onClose() {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+  }
+
+  private scheduleRefresh() {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.renderChanges(), 300);
+  }
+
+  renderChanges() {
+    const container = this.contentEl;
+    container.empty();
+
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) {
+      container.createEl("div", {
+        text: "No active document",
+        cls: "critic-track-panel-empty",
+      });
+      return;
+    }
+
+    const doc = view.editor.getValue();
+    const changes = findAllCriticMarkup(doc);
+    const actionable = changes.filter(
+      (c) => c.type === "addition" || c.type === "deletion" || c.type === "substitution"
+    );
+
+    if (actionable.length === 0) {
+      container.createEl("div", {
+        text: "No tracked changes",
+        cls: "critic-track-panel-empty",
+      });
+      return;
+    }
+
+    // Header
+    const header = container.createEl("div", { cls: "critic-track-panel-header" });
+    header.createEl("span", {
+      text: actionable.length + " change" + (actionable.length > 1 ? "s" : ""),
+      cls: "critic-track-panel-count",
+    });
+
+    const headerBtns = header.createEl("div", { cls: "critic-track-panel-header-btns" });
+
+    const acceptAllBtn = headerBtns.createEl("button", {
+      cls: "critic-track-panel-btn critic-track-panel-btn-accept",
+    });
+    acceptAllBtn.textContent = "Accept All";
+    acceptAllBtn.addEventListener("click", () => {
+      this.plugin.acceptAllChanges();
+      this.renderChanges();
+    });
+
+    const rejectAllBtn = headerBtns.createEl("button", {
+      cls: "critic-track-panel-btn critic-track-panel-btn-reject",
+    });
+    rejectAllBtn.textContent = "Reject All";
+    rejectAllBtn.addEventListener("click", () => {
+      this.plugin.rejectAllChanges();
+      this.renderChanges();
+    });
+
+    // Change list
+    const list = container.createEl("div", { cls: "critic-track-panel-list" });
+
+    for (let i = 0; i < actionable.length; i++) {
+      const change = actionable[i];
+      const item = list.createEl("div", { cls: "critic-track-panel-item" });
+
+      // Type indicator
+      const typeBadge = item.createEl("span", {
+        cls: "critic-track-panel-badge critic-track-panel-badge-" + change.type,
+      });
+      typeBadge.textContent =
+        change.type === "addition" ? "+" : change.type === "deletion" ? "\u2212" : "\u223C";
+
+      // Content
+      const content = item.createEl("div", { cls: "critic-track-panel-content" });
+      if (change.type === "substitution") {
+        const oldEl = content.createEl("span", { cls: "critic-track-panel-del-text" });
+        oldEl.textContent = truncate(change.oldContent || "", 50);
+        content.createEl("span", { text: " \u2192 ", cls: "critic-track-panel-arrow" });
+        const newEl = content.createEl("span", { cls: "critic-track-panel-add-text" });
+        newEl.textContent = truncate(change.newContent || "", 50);
+      } else {
+        const textEl = content.createEl("span", {
+          cls:
+            change.type === "addition"
+              ? "critic-track-panel-add-text"
+              : "critic-track-panel-del-text",
+        });
+        textEl.textContent = truncate(change.content || "", 80);
+      }
+
+      // Action buttons
+      const actions = item.createEl("div", { cls: "critic-track-panel-item-actions" });
+
+      const acceptBtn = actions.createEl("button", {
+        cls: "critic-track-panel-btn-sm critic-track-panel-btn-accept",
+        title: "Accept",
+      });
+      acceptBtn.textContent = "\u2713";
+      acceptBtn.addEventListener("click", () => {
+        this.plugin.applyChangeByIndex(i, "accept");
+        this.renderChanges();
+      });
+
+      const rejectBtn = actions.createEl("button", {
+        cls: "critic-track-panel-btn-sm critic-track-panel-btn-reject",
+        title: "Reject",
+      });
+      rejectBtn.textContent = "\u2717";
+      rejectBtn.addEventListener("click", () => {
+        this.plugin.applyChangeByIndex(i, "reject");
+        this.renderChanges();
+      });
+
+      // Click item to scroll to change in editor
+      item.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).tagName === "BUTTON") return;
+        const editor = view.editor;
+        const pos = this.plugin.offsetToPos(editor, change.from);
+        editor.setCursor(pos);
+        editor.focus();
+      });
+    }
+  }
+}
+
+function truncate(str: string, max: number): string {
+  if (str.length <= max) return str;
+  return str.slice(0, max) + "\u2026";
 }
 
 // ── Insertion Session ─────────────────────────────────────────────────────────
@@ -527,7 +686,10 @@ export default class CriticTrackPlugin extends Plugin {
     this.statusBarEl = this.addStatusBarItem();
     this.updateStatusBar();
 
-    // Register commands
+    // Register sidebar view
+    this.registerView(VIEW_TYPE_CHANGES, (leaf) => new ChangesView(leaf, this));
+
+    // Commands
     this.addCommand({
       id: "toggle-tracking",
       name: "Toggle revision tracking",
@@ -559,6 +721,11 @@ export default class CriticTrackPlugin extends Plugin {
       name: "Add comment at selection",
       callback: () => this.addComment(),
     });
+    this.addCommand({
+      id: "show-changes-panel",
+      name: "Show tracked changes panel",
+      callback: () => this.activateChangesPanel(),
+    });
 
     this.addRibbonIcon("pencil", "Toggle revision tracking", () =>
       this.toggleTracking()
@@ -573,34 +740,29 @@ export default class CriticTrackPlugin extends Plugin {
 
     // Context menu
     this.registerEvent(
-      this.app.workspace.on(
-        "editor-menu",
-        (menu: Menu, editor: Editor) => {
-          if (this.tracking) {
-            menu.addItem((item) =>
-              item
-                .setTitle("Accept change at cursor")
-                .setIcon("check")
-                .onClick(() => this.acceptChangeAtCursor())
-            );
-            menu.addItem((item) =>
-              item
-                .setTitle("Reject change at cursor")
-                .setIcon("x")
-                .onClick(() => this.rejectChangeAtCursor())
-            );
-            menu.addSeparator();
-          }
+      this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
+        if (this.tracking) {
           menu.addItem((item) =>
             item
-              .setTitle(
-                this.tracking ? "Stop tracking" : "Start tracking"
-              )
-              .setIcon("pencil")
-              .onClick(() => this.toggleTracking())
+              .setTitle("Accept change at cursor")
+              .setIcon("check")
+              .onClick(() => this.acceptChangeAtCursor())
           );
+          menu.addItem((item) =>
+            item
+              .setTitle("Reject change at cursor")
+              .setIcon("x")
+              .onClick(() => this.rejectChangeAtCursor())
+          );
+          menu.addSeparator();
         }
-      )
+        menu.addItem((item) =>
+          item
+            .setTitle(this.tracking ? "Stop tracking" : "Start tracking")
+            .setIcon("pencil")
+            .onClick(() => this.toggleTracking())
+        );
+      })
     );
 
     // IME composition events for non-English input
@@ -645,13 +807,24 @@ export default class CriticTrackPlugin extends Plugin {
     this.finalizeSession();
   }
 
+  async activateChangesPanel() {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHANGES);
+    if (existing.length) {
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+    const rightLeaf = this.app.workspace.getRightLeaf(false);
+    if (rightLeaf) {
+      await rightLeaf.setViewState({ type: VIEW_TYPE_CHANGES, active: true });
+      this.app.workspace.revealLeaf(rightLeaf);
+    }
+  }
+
   toggleTracking() {
     this.finalizeSession();
     this.tracking = !this.tracking;
     this.updateStatusBar();
-    new Notice(
-      this.tracking ? "Revision tracking ON" : "Revision tracking OFF"
-    );
+    new Notice(this.tracking ? "Revision tracking ON" : "Revision tracking OFF");
   }
 
   updateStatusBar() {
@@ -677,13 +850,14 @@ export default class CriticTrackPlugin extends Plugin {
     const editor = view.editor;
 
     const closeLine = this.session.startLine;
-    const closeCh =
-      this.session.startCh + 3 + this.session.content.length;
+    const closeCh = this.session.startCh + 3 + this.session.content.length;
     const closePos: EditorPosition = { line: closeLine, ch: closeCh };
     const closing = "++}" + this.session.meta;
 
     this.intercepting = true;
     editor.replaceRange(closing, closePos);
+    // Move cursor to after the closing marker
+    editor.setCursor({ line: closeLine, ch: closeCh + closing.length });
     this.intercepting = false;
     this.session = null;
   }
@@ -699,17 +873,30 @@ export default class CriticTrackPlugin extends Plugin {
           cursor.line === this.session.startLine &&
           cursor.ch === expectedCh
         ) {
+          // Extend the current session
           editor.replaceRange(char, cursor);
+          // Explicitly move cursor after the inserted char
+          editor.setCursor({
+            line: cursor.line,
+            ch: cursor.ch + char.length,
+          });
           this.session.content += char;
           return;
         }
+        // Cursor moved away - finalize old session and start new
         this.intercepting = false;
         this.finalizeSession();
         this.intercepting = true;
       }
 
+      // Start new session
       const cursor = editor.getCursor();
       editor.replaceRange("{++" + char, cursor);
+      // Explicitly set cursor after "{++X"
+      editor.setCursor({
+        line: cursor.line,
+        ch: cursor.ch + 3 + char.length,
+      });
       this.session = {
         startLine: cursor.line,
         startCh: cursor.ch,
@@ -736,20 +923,18 @@ export default class CriticTrackPlugin extends Plugin {
         cursor.line === this.session.startLine &&
         startCh === expectedCh
       ) {
-        // Text was inserted right after the open session content
         this.session.content += text;
         return;
       }
-      // Session is elsewhere, finalize it first
       this.intercepting = false;
       this.finalizeSession();
       this.intercepting = true;
     }
 
-    // Wrap the committed IME text: insert {++ before and ++} after
+    // Wrap the committed IME text
     const startPos: EditorPosition = { line: cursor.line, ch: startCh };
 
-    // Insert closing marker first (so positions don't shift)
+    // Insert closing marker first (so positions don't shift for the opening)
     editor.replaceRange("++}", cursor);
     // Then insert opening marker
     editor.replaceRange("{++", startPos);
@@ -764,9 +949,8 @@ export default class CriticTrackPlugin extends Plugin {
   private handleKeydown(evt: KeyboardEvent) {
     if (!this.tracking || this.intercepting || this.composing) return;
 
-    // Critical: detect IME composition. The first keydown during IME fires
-    // BEFORE compositionstart, so this.composing is still false.
-    // evt.isComposing and keyCode 229 catch this case.
+    // Detect IME composition - isComposing catches active composition,
+    // keyCode 229 catches the first keydown before compositionstart fires
     if (evt.isComposing || evt.keyCode === 229) return;
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -861,37 +1045,40 @@ export default class CriticTrackPlugin extends Plugin {
       const meta = makeMetaComment(this.settings);
       if (sel && sel.length > 0) {
         editor.replaceSelection("{--" + sel + "--}" + meta);
-      } else {
-        const cursor = editor.getCursor();
-        if (cursor.ch === 0 && cursor.line === 0) return;
-
-        // Check if cursor is inside existing CriticMarkup - if so, skip
-        const lineText = editor.getLine(cursor.line);
-        const doc = editor.getValue();
-        const offset = this.cursorToOffset(editor, cursor);
-
-        // Check if we're inside an existing critic markup tag
-        if (this.isInsideCriticMarkup(doc, offset)) {
-          return;
-        }
-
-        let fromPos: EditorPosition;
-        if (cursor.ch > 0) {
-          fromPos = { line: cursor.line, ch: cursor.ch - 1 };
-        } else {
-          const prevLine = cursor.line - 1;
-          fromPos = {
-            line: prevLine,
-            ch: editor.getLine(prevLine).length,
-          };
-        }
-        const deleted = editor.getRange(fromPos, cursor);
-        editor.replaceRange(
-          "{--" + deleted + "--}" + meta,
-          fromPos,
-          cursor
-        );
+        return;
       }
+
+      const cursor = editor.getCursor();
+      if (cursor.ch === 0 && cursor.line === 0) return;
+
+      const doc = editor.getValue();
+      const offset = this.cursorToOffset(editor, cursor);
+
+      // Check if the character to be deleted (at offset-1) is inside CriticMarkup
+      if (offset > 0 && isPartOfCriticMarkup(doc, offset - 1)) {
+        // Don't wrap CriticMarkup syntax characters - just let it be
+        // (prevent the cascading {--}-- chain)
+        return;
+      }
+
+      let fromPos: EditorPosition;
+      if (cursor.ch > 0) {
+        fromPos = { line: cursor.line, ch: cursor.ch - 1 };
+      } else {
+        const prevLine = cursor.line - 1;
+        fromPos = {
+          line: prevLine,
+          ch: editor.getLine(prevLine).length,
+        };
+      }
+      const deleted = editor.getRange(fromPos, cursor);
+      const replacement = "{--" + deleted + "--}" + meta;
+      editor.replaceRange(replacement, fromPos, cursor);
+      // Set cursor after the replacement
+      editor.setCursor({
+        line: fromPos.line,
+        ch: fromPos.ch + replacement.length,
+      });
     } finally {
       this.intercepting = false;
     }
@@ -904,35 +1091,36 @@ export default class CriticTrackPlugin extends Plugin {
       const meta = makeMetaComment(this.settings);
       if (sel && sel.length > 0) {
         editor.replaceSelection("{--" + sel + "--}" + meta);
-      } else {
-        const cursor = editor.getCursor();
-        const lineText = editor.getLine(cursor.line);
-        if (
-          cursor.ch >= lineText.length &&
-          cursor.line >= editor.lastLine()
-        )
-          return;
-
-        const doc = editor.getValue();
-        const offset = this.cursorToOffset(editor, cursor);
-
-        if (this.isInsideCriticMarkup(doc, offset)) {
-          return;
-        }
-
-        let toPos: EditorPosition;
-        if (cursor.ch < lineText.length) {
-          toPos = { line: cursor.line, ch: cursor.ch + 1 };
-        } else {
-          toPos = { line: cursor.line + 1, ch: 0 };
-        }
-        const deleted = editor.getRange(cursor, toPos);
-        editor.replaceRange(
-          "{--" + deleted + "--}" + meta,
-          cursor,
-          toPos
-        );
+        return;
       }
+
+      const cursor = editor.getCursor();
+      const lineText = editor.getLine(cursor.line);
+      if (cursor.ch >= lineText.length && cursor.line >= editor.lastLine())
+        return;
+
+      const doc = editor.getValue();
+      const offset = this.cursorToOffset(editor, cursor);
+
+      // Check if the character to be deleted (at offset) is inside CriticMarkup
+      if (isPartOfCriticMarkup(doc, offset)) {
+        return;
+      }
+
+      let toPos: EditorPosition;
+      if (cursor.ch < lineText.length) {
+        toPos = { line: cursor.line, ch: cursor.ch + 1 };
+      } else {
+        toPos = { line: cursor.line + 1, ch: 0 };
+      }
+      const deleted = editor.getRange(cursor, toPos);
+      const replacement = "{--" + deleted + "--}" + meta;
+      editor.replaceRange(replacement, cursor, toPos);
+      // Set cursor after the replacement
+      editor.setCursor({
+        line: cursor.line,
+        ch: cursor.ch + replacement.length,
+      });
     } finally {
       this.intercepting = false;
     }
@@ -952,28 +1140,6 @@ export default class CriticTrackPlugin extends Plugin {
     } finally {
       this.intercepting = false;
     }
-  }
-
-  // ── Helper: check if offset is inside CriticMarkup ──────────────────────
-
-  private isInsideCriticMarkup(doc: string, offset: number): boolean {
-    const patterns = [
-      /\{\+\+[\s\S]+?\+\+\}/g,
-      /\{--[\s\S]+?--\}/g,
-      /\{~~[\s\S]+?~>[\s\S]+?~~\}/g,
-      /\{>>[\s\S]+?<<\}/g,
-      /\{==[\s\S]+?==\}/g,
-    ];
-    for (const re of patterns) {
-      for (const m of doc.matchAll(re)) {
-        const start = m.index!;
-        const end = start + m[0].length;
-        if (offset > start && offset < end) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   // ── Accept / Reject ──────────────────────────────────────────────────────
@@ -1002,6 +1168,38 @@ export default class CriticTrackPlugin extends Plugin {
     t = t.replace(/\{>>([\s\S]+?)<<\}/g, "");
     view.editor.setValue(t);
     new Notice("All changes rejected");
+  }
+
+  /**
+   * Accept or reject a specific change by its index among actionable changes.
+   * Used by the sidebar panel.
+   */
+  applyChangeByIndex(index: number, action: "accept" | "reject") {
+    this.finalizeSession();
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) return;
+    const doc = view.editor.getValue();
+    const changes = findAllCriticMarkup(doc);
+    const actionable = changes.filter(
+      (c) => c.type === "addition" || c.type === "deletion" || c.type === "substitution"
+    );
+    if (index < 0 || index >= actionable.length) return;
+
+    const change = actionable[index];
+    let replacement = "";
+    if (action === "accept") {
+      if (change.type === "addition") replacement = change.content || "";
+      else if (change.type === "deletion") replacement = "";
+      else if (change.type === "substitution") replacement = change.newContent || "";
+    } else {
+      if (change.type === "addition") replacement = "";
+      else if (change.type === "deletion") replacement = change.content || "";
+      else if (change.type === "substitution") replacement = change.oldContent || "";
+    }
+
+    view.editor.setValue(
+      doc.slice(0, change.from) + replacement + doc.slice(change.to)
+    );
   }
 
   private findMarkupAtOffset(
@@ -1033,12 +1231,24 @@ export default class CriticTrackPlugin extends Plugin {
     return null;
   }
 
-  private cursorToOffset(editor: Editor, pos: EditorPosition): number {
+  cursorToOffset(editor: Editor, pos: EditorPosition): number {
     let offset = 0;
-    for (let i = 0; i < pos.line; i++)
-      offset += editor.getLine(i).length + 1;
+    for (let i = 0; i < pos.line; i++) offset += editor.getLine(i).length + 1;
     offset += pos.ch;
     return offset;
+  }
+
+  offsetToPos(editor: Editor, offset: number): EditorPosition {
+    let remaining = offset;
+    const lineCount = editor.lineCount();
+    for (let i = 0; i < lineCount; i++) {
+      const lineLen = editor.getLine(i).length;
+      if (remaining <= lineLen) {
+        return { line: i, ch: remaining };
+      }
+      remaining -= lineLen + 1;
+    }
+    return { line: lineCount - 1, ch: editor.getLine(lineCount - 1).length };
   }
 
   acceptChangeAtCursor() {
@@ -1094,17 +1304,11 @@ export default class CriticTrackPlugin extends Plugin {
     const ts = this.settings.enableTimestamp
       ? " " + formatTimestamp(this.settings.timestampFormat)
       : "";
-    editor.replaceSelection(
-      "{==" + sel + "==}{>>comment" + ts + "<<}"
-    );
+    editor.replaceSelection("{==" + sel + "==}{>>comment" + ts + "<<}");
   }
 
   async loadSettings() {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      await this.loadData()
-    );
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
   }
 
   async saveSettings() {

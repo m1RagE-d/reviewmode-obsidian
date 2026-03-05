@@ -138,3 +138,143 @@
 .theme-dark .critic-track-substitution-source {
   color: #d29922;
 }
+
+/* ─── Sidebar Panel: Tracked Changes ──────────────────────────────────────── */
+
+.critic-track-panel-empty {
+  color: var(--text-faint);
+  padding: 16px;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.critic-track-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.critic-track-panel-count {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.critic-track-panel-header-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.critic-track-panel-btn {
+  padding: 3px 8px;
+  font-size: 0.8em;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  cursor: pointer;
+  color: var(--text-normal);
+}
+
+.critic-track-panel-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.critic-track-panel-btn-accept {
+  color: #2ea043;
+}
+
+.critic-track-panel-btn-reject {
+  color: #f85149;
+}
+
+.critic-track-panel-list {
+  padding: 4px 0;
+}
+
+.critic-track-panel-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--background-modifier-border-focus);
+}
+
+.critic-track-panel-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.critic-track-panel-badge {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 3px;
+}
+
+.critic-track-panel-badge-addition {
+  color: #2ea043;
+  background: rgba(46, 160, 67, 0.1);
+}
+
+.critic-track-panel-badge-deletion {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.critic-track-panel-badge-substitution {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.1);
+}
+
+.critic-track-panel-content {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85em;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.critic-track-panel-add-text {
+  color: #2ea043;
+}
+
+.critic-track-panel-del-text {
+  color: #f85149;
+  text-decoration: line-through;
+}
+
+.critic-track-panel-arrow {
+  color: var(--text-faint);
+}
+
+.critic-track-panel-item-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+}
+
+.critic-track-panel-btn-sm {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.critic-track-panel-btn-sm:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+}
