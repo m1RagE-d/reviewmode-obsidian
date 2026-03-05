@@ -1,85 +1,86 @@
-/* ─── CriticMarkup visual rendering (Live Preview) ─────────────────────────── */
+/* ─── Live Preview: Addition = green underline ─────────────────────────────── */
 
 .critic-track-addition {
-  background-color: rgba(0, 180, 0, 0.15);
-  color: var(--text-normal);
-  border-bottom: 2px solid rgba(0, 180, 0, 0.5);
-  padding: 1px 2px;
-  border-radius: 2px;
+  background-color: rgba(46, 160, 67, 0.15);
+  border-bottom: 2px solid rgba(46, 160, 67, 0.6);
+  padding: 0 1px;
+  border-radius: 1px;
 }
+
+/* ─── Live Preview: Deletion = red strikethrough ───────────────────────────── */
 
 .critic-track-deletion {
-  background-color: rgba(220, 0, 0, 0.12);
+  background-color: rgba(248, 81, 73, 0.15);
   color: var(--text-muted);
   text-decoration: line-through;
-  text-decoration-color: rgba(220, 0, 0, 0.6);
-  padding: 1px 2px;
-  border-radius: 2px;
+  text-decoration-color: rgba(248, 81, 73, 0.7);
+  padding: 0 1px;
+  border-radius: 1px;
 }
+
+/* ─── Live Preview: Comment = gray italic note ─────────────────────────────── */
 
 .critic-track-comment {
-  background-color: rgba(100, 100, 255, 0.12);
-  color: var(--text-muted);
+  color: var(--text-faint);
+  font-style: italic;
   font-size: 0.85em;
-  padding: 1px 4px;
-  border-radius: 3px;
-  border: 1px solid rgba(100, 100, 255, 0.25);
 }
+
+/* ─── Live Preview: Highlight = yellow background ──────────────────────────── */
 
 .critic-track-highlight {
-  background-color: rgba(255, 200, 0, 0.25);
-  padding: 1px 2px;
-  border-radius: 2px;
+  background-color: rgba(255, 212, 59, 0.3);
+  padding: 0 1px;
+  border-radius: 1px;
 }
 
-/* ─── Source mode styles (shows delimiters with color) ─────────────────────── */
+/* ─── Source mode: colored syntax (delimiters visible) ─────────────────────── */
 
 .critic-track-addition-source {
-  color: rgba(0, 160, 0, 0.85);
+  color: #2ea043;
 }
 
 .critic-track-deletion-source {
-  color: rgba(200, 0, 0, 0.75);
+  color: #f85149;
   text-decoration: line-through;
-  text-decoration-color: rgba(200, 0, 0, 0.4);
+  text-decoration-color: rgba(248, 81, 73, 0.5);
 }
 
 .critic-track-substitution-source {
-  color: rgba(180, 120, 0, 0.85);
+  color: #d29922;
 }
 
 .critic-track-comment-source {
-  color: rgba(100, 100, 255, 0.7);
-  font-size: 0.9em;
+  color: var(--text-faint);
+  font-style: italic;
 }
 
 .critic-track-highlight-source {
-  background-color: rgba(255, 200, 0, 0.18);
+  background-color: rgba(255, 212, 59, 0.2);
 }
 
 /* ─── Accept / Reject inline buttons ───────────────────────────────────────── */
 
 .critic-track-actions {
   display: inline-flex;
-  gap: 2px;
+  gap: 1px;
   margin-left: 2px;
-  vertical-align: middle;
+  vertical-align: baseline;
 }
 
 .critic-track-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 12px;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
   line-height: 1;
-  border-radius: 3px;
+  border-radius: 2px;
   cursor: pointer;
   user-select: none;
-  opacity: 0.6;
+  opacity: 0.5;
   transition: opacity 0.15s, background-color 0.15s;
-  vertical-align: middle;
 }
 
 .critic-track-btn:hover {
@@ -87,72 +88,53 @@
 }
 
 .critic-track-accept-btn {
-  color: #22863a;
-  background-color: rgba(0, 180, 0, 0.1);
+  color: #2ea043;
 }
 
 .critic-track-accept-btn:hover {
-  background-color: rgba(0, 180, 0, 0.25);
+  background-color: rgba(46, 160, 67, 0.2);
 }
 
 .critic-track-reject-btn {
-  color: #cb2431;
-  background-color: rgba(220, 0, 0, 0.08);
+  color: #f85149;
 }
 
 .critic-track-reject-btn:hover {
-  background-color: rgba(220, 0, 0, 0.2);
+  background-color: rgba(248, 81, 73, 0.15);
 }
 
-/* ─── Status bar indicator ─────────────────────────────────────────────────── */
+/* ─── Status bar ───────────────────────────────────────────────────────────── */
 
 .critic-track-active {
   color: var(--text-accent);
   font-weight: 600;
 }
 
-/* ─── Dark theme adjustments ───────────────────────────────────────────────── */
+/* ─── Dark theme ───────────────────────────────────────────────────────────── */
 
 .theme-dark .critic-track-addition {
-  background-color: rgba(0, 200, 0, 0.1);
-  border-bottom-color: rgba(0, 200, 0, 0.4);
+  background-color: rgba(46, 160, 67, 0.12);
+  border-bottom-color: rgba(46, 160, 67, 0.5);
 }
 
 .theme-dark .critic-track-deletion {
-  background-color: rgba(255, 50, 50, 0.1);
-  text-decoration-color: rgba(255, 50, 50, 0.5);
-}
-
-.theme-dark .critic-track-comment {
-  background-color: rgba(120, 120, 255, 0.1);
-  border-color: rgba(120, 120, 255, 0.2);
+  background-color: rgba(248, 81, 73, 0.12);
+  text-decoration-color: rgba(248, 81, 73, 0.6);
 }
 
 .theme-dark .critic-track-highlight {
-  background-color: rgba(255, 200, 0, 0.15);
+  background-color: rgba(255, 212, 59, 0.2);
 }
 
 .theme-dark .critic-track-addition-source {
-  color: rgba(80, 220, 80, 0.9);
+  color: #3fb950;
 }
 
 .theme-dark .critic-track-deletion-source {
-  color: rgba(255, 80, 80, 0.8);
-  text-decoration-color: rgba(255, 80, 80, 0.4);
+  color: #f85149;
+  text-decoration-color: rgba(248, 81, 73, 0.4);
 }
 
 .theme-dark .critic-track-substitution-source {
-  color: rgba(255, 180, 50, 0.85);
-}
-
-.theme-dark .critic-track-comment-source {
-  color: rgba(140, 140, 255, 0.8);
-}
-
-.theme-dark .critic-track-accept-btn {
-  color: #56d364;
-}
-
-.theme-dark .critic-track-reject-btn {
-  color: #f85149;
+  color: #d29922;
 }

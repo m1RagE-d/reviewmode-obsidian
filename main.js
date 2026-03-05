@@ -27,7 +27,7 @@ var import_view = require("@codemirror/view");
 var import_state = require("@codemirror/state");
 var DEFAULT_SETTINGS = {
   timestampFormat: "YYYY-MM-DD HH:mm",
-  enableTimestamp: true,
+  enableTimestamp: false,
   authorTag: "",
   enableAuthorTag: false
 };
@@ -566,10 +566,13 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
     }
   }
   handleCompositionInsert(editor, text) {
+    const cursor = editor.getCursor();
+    const startCh = cursor.ch - text.length;
+    if (startCh < 0)
+      return;
     if (this.session) {
-      const cursor2 = editor.getCursor();
-      const expectedCh = this.session.startCh + 3 + this.session.content.length + text.length;
-      if (cursor2.line === this.session.startLine && cursor2.ch === expectedCh) {
+      const expectedCh = this.session.startCh + 3 + this.session.content.length;
+      if (cursor.line === this.session.startLine && startCh === expectedCh) {
         this.session.content += text;
         return;
       }
@@ -577,25 +580,17 @@ var CriticTrackPlugin = class extends import_obsidian.Plugin {
       this.finalizeSession();
       this.intercepting = true;
     }
-    const cursor = editor.getCursor();
-    const startCh = cursor.ch - text.length;
-    if (startCh < 0)
-      return;
     const startPos = { line: cursor.line, ch: startCh };
-    const meta = makeMetaComment(this.settings);
+    editor.replaceRange("++}", cursor);
     editor.replaceRange("{++", startPos);
-    const afterText = {
-      line: cursor.line,
-      ch: startCh + 3 + text.length
-    };
-    const closing = "++}" + meta;
-    editor.replaceRange(closing, afterText);
-    const finalCh = afterText.ch + closing.length;
+    const finalCh = startCh + 3 + text.length + 3;
     editor.setCursor({ line: cursor.line, ch: finalCh });
   }
   // ── Keyboard ─────────────────────────────────────────────────────────────
   handleKeydown(evt) {
     if (!this.tracking || this.intercepting || this.composing)
+      return;
+    if (evt.isComposing || evt.keyCode === 229)
       return;
     const view = this.app.workspace.getActiveViewOfType(import_obsidian.MarkdownView);
     if (!view || view.getMode() !== "source")

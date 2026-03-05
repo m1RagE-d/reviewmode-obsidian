@@ -34,7 +34,7 @@ interface CriticTrackSettings {
 
 const DEFAULT_SETTINGS: CriticTrackSettings = {
   timestampFormat: "YYYY-MM-DD HH:mm",
-  enableTimestamp: true,
+  enableTimestamp: false,
   authorTag: "",
   enableAuthorTag: false,
 };
@@ -722,41 +722,40 @@ export default class CriticTrackPlugin extends Plugin {
   }
 
   private handleCompositionInsert(editor: Editor, text: string) {
+    // After IME commits, the text is already in the document.
+    // We need to wrap it with {++ ... ++} retroactively.
+    const cursor = editor.getCursor();
+    const startCh = cursor.ch - text.length;
+    if (startCh < 0) return;
+
+    // If there's an open session right before this text, extend it
     if (this.session) {
-      const cursor = editor.getCursor();
       const expectedCh =
-        this.session.startCh +
-        3 +
-        this.session.content.length +
-        text.length;
+        this.session.startCh + 3 + this.session.content.length;
       if (
         cursor.line === this.session.startLine &&
-        cursor.ch === expectedCh
+        startCh === expectedCh
       ) {
+        // Text was inserted right after the open session content
         this.session.content += text;
         return;
       }
+      // Session is elsewhere, finalize it first
       this.intercepting = false;
       this.finalizeSession();
       this.intercepting = true;
     }
 
-    const cursor = editor.getCursor();
-    const startCh = cursor.ch - text.length;
-    if (startCh < 0) return;
-
+    // Wrap the committed IME text: insert {++ before and ++} after
     const startPos: EditorPosition = { line: cursor.line, ch: startCh };
-    const meta = makeMetaComment(this.settings);
 
+    // Insert closing marker first (so positions don't shift)
+    editor.replaceRange("++}", cursor);
+    // Then insert opening marker
     editor.replaceRange("{++", startPos);
-    const afterText: EditorPosition = {
-      line: cursor.line,
-      ch: startCh + 3 + text.length,
-    };
-    const closing = "++}" + meta;
-    editor.replaceRange(closing, afterText);
 
-    const finalCh = afterText.ch + closing.length;
+    // Position cursor after the closing marker
+    const finalCh = startCh + 3 + text.length + 3;
     editor.setCursor({ line: cursor.line, ch: finalCh });
   }
 
@@ -764,6 +763,11 @@ export default class CriticTrackPlugin extends Plugin {
 
   private handleKeydown(evt: KeyboardEvent) {
     if (!this.tracking || this.intercepting || this.composing) return;
+
+    // Critical: detect IME composition. The first keydown during IME fires
+    // BEFORE compositionstart, so this.composing is still false.
+    // evt.isComposing and keyCode 229 catch this case.
+    if (evt.isComposing || evt.keyCode === 229) return;
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view || view.getMode() !== "source") return;
